@@ -1,6 +1,0 @@
-# ninja log v6
-3	306	7513090470281078	build.ninja	90319630c95d920f
-2	82	7513090583328664	CMakeFiles/WebServer.dir/src/http_parser.c.obj	5206bdc3eee5d2cf
-23	104	7513090583538710	CMakeFiles/WebServer.dir/src/server.c.obj	42340019819eb885
-14	866	7513090583438675	CMakeFiles/WebServer.dir/src/main.c.obj	2ef8d2cb53bdf9f0
-868	997	7513090591989257	WebServer.exe	81d08fbec2d57f61
