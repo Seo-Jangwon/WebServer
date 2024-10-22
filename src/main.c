@@ -2,6 +2,11 @@
 #include <stdlib.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <http_parser.h>
+
+//todo 많은 HTTP 헤더 파싱
+//todo 쿼리 문자열 파싱
+//todo POST 데이터 파싱
 
 // ws2_32.lib 라이브러리 링크
 #pragma comment(lib, "ws2_32.lib")
@@ -17,28 +22,50 @@ void error_handling(const char* message) {
 
 // 클라이언트 요청 처리
 void handle_client(SOCKET client_socket) {
-    char buffer[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE] = {0};  // 버퍼 초기화 추가
     int str_len;
 
-    // 클라이언트로부터 메시지 수신
+    // 클라이언트로부터 메시지 받기
     str_len = recv(client_socket, buffer, BUFFER_SIZE, 0);
     if (str_len == SOCKET_ERROR) {
         error_handling("recv() error");
+        return;
     }
 
-    // 디버깅용 수신 메시지 출력
+    // 받은 데이터 출력 (디버깅용)
     printf("Received message: %s\n", buffer);
 
-    // HTTP 응답 메시지 생성
-    const char* response = "HTTP/1.1 200 OK\r\n"              // 상태 라인
-                          "Content-Type: text/plain\r\n"      // 헤더 - 컨텐츠 타입
-                          "Content-Length: 13\r\n"            // 헤더 - 컨텐츠 길이
-                          "\r\n"                              // 빈 줄로 헤더와 바디 구분
-                          "Hello, World!";                    // 응답 바디
+    // HTTP 요청 파싱
+    http_request req = parse_http_request(buffer);
+    print_http_request(&req);
 
-    // 응답 발신
-    send(client_socket, response, strlen(response), 0);
-    closesocket(client_socket);  // 클라이언트 소켓 종료
+    // HTTP 응답 생성
+    char response[1024];
+    snprintf(response, sizeof(response),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "<html><body>"
+        "<h1>Request Parsed</h1>"
+        "<p>Method: %s</p>"
+        "<p>Path: %s</p>"
+        "<p>Version: %s</p>"
+        "<p>Host: %s</p>"
+        "</body></html>",
+        get_method_string(req.method),
+        req.path,
+        req.version,
+        req.host
+    );
+
+    // 응답 전송
+    int sent = send(client_socket, response, strlen(response), 0);
+    if (sent == SOCKET_ERROR) {
+        error_handling("send() error");
+    }
+
+    closesocket(client_socket);
 }
 
 int main() {
@@ -94,3 +121,4 @@ int main() {
     WSACleanup();
     return 0;
 }
+
