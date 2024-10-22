@@ -138,6 +138,7 @@ webserver/
 └── Makefile
 ```
 
+<!--
 ## 빌드 방법
 
 ```bash
@@ -156,6 +157,7 @@ make
 ```bash
 make test
 ```
+-->
 
 ## 구현 계획
 
