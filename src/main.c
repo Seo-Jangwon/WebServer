@@ -4,7 +4,6 @@
 #include <ws2tcpip.h>
 #include <http_parser.h>
 
-//todo 많은 HTTP 헤더 파싱
 //todo 쿼리 문자열 파싱
 //todo POST 데이터 파싱
 
@@ -41,6 +40,8 @@ void handle_client(SOCKET client_socket) {
 
     // HTTP 응답 생성
     char response[1024];
+    char body[3072];
+
     snprintf(response, sizeof(response),
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: text/html\r\n"
@@ -58,6 +59,18 @@ void handle_client(SOCKET client_socket) {
         req.version,
         req.host
     );
+
+    // 헤더 목록 추가
+    char temp[1024];
+    for (int i = 0; i < req.header_count; i++) {
+        snprintf(temp, sizeof(temp),
+            "<li><strong>%s:</strong> %s</li>",
+            req.headers[i].name,
+            req.headers[i].value
+        );
+        strncat(body, temp, sizeof(body) - strlen(body) - 1);
+    }
+    strncat(body, "</ul>", sizeof(body) - strlen(body) - 1);
 
     // 응답 전송
     int sent = send(client_socket, response, strlen(response), 0);
