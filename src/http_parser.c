@@ -4,23 +4,23 @@
 #include <ctype.h>
 
 // HTTP 메소드를 문자열로
-const char* get_method_string(http_method method) {
+const char *get_method_string(http_method method) {
   switch (method) {
-    case HTTP_GET:    return "GET";
-    case HTTP_POST:   return "POST";
-    case HTTP_HEAD:   return "HEAD";
-    case HTTP_PUT:    return "PUT";
+    case HTTP_GET: return "GET";
+    case HTTP_POST: return "POST";
+    case HTTP_HEAD: return "HEAD";
+    case HTTP_PUT: return "PUT";
     case HTTP_DELETE: return "DELETE";
-    default:         return "UNKNOWN";
+    default: return "UNKNOWN";
   }
 }
 
 // HTTP 메소드 문자열 enum으로
-static http_method parse_method(const char* method_str) {
-  if (strcmp(method_str, "GET") == 0)    return HTTP_GET;
-  if (strcmp(method_str, "POST") == 0)   return HTTP_POST;
-  if (strcmp(method_str, "HEAD") == 0)   return HTTP_HEAD;
-  if (strcmp(method_str, "PUT") == 0)    return HTTP_PUT;
+static http_method parse_method(const char *method_str) {
+  if (strcmp(method_str, "GET") == 0) return HTTP_GET;
+  if (strcmp(method_str, "POST") == 0) return HTTP_POST;
+  if (strcmp(method_str, "HEAD") == 0) return HTTP_HEAD;
+  if (strcmp(method_str, "PUT") == 0) return HTTP_PUT;
   if (strcmp(method_str, "DELETE") == 0) return HTTP_DELETE;
   return HTTP_UNKNOWN;
 }
