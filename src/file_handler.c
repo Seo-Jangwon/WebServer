@@ -1,3 +1,11 @@
+/*
+* 파일 처리기
+ * 주요 구현사항:
+ * 1. 파일 시스템 접근 및 읽기
+ * 2. 보안을 위한 경로 정규화
+ * 3. MIME 타입 매핑
+ * 4. 메모리 관리
+ */
 #include "file_handler.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +38,27 @@ static const mime_mapping MIME_TYPES[] = {
   {".zip", "application/zip"},
   {NULL, "application/octet-stream"} // Default
 };
+
+// 보안 검사
+int is_path_safe(const char *path) {
+  // ".." 상위 디렉토리 접근 제한
+  if (strstr(path, "..") != NULL) {
+    return 0;
+  }
+
+  // 절대 경로 사용 제한
+  if (path[0] == '/' || path[0] == '\\') {
+    return 0;
+  }
+
+  // 기타 특수 문자 제한
+  const char *invalid_chars = "<>:\"\\|?*";
+  if (strpbrk(path, invalid_chars) != NULL) {
+    return 0;
+  }
+
+  return 1;
+}
 
 // 파일 확장자 추출
 static const char *get_file_extension(const char *file_path) {
