@@ -16,10 +16,18 @@ add_executable(${PROJECT_NAME} ${SOURCES}
         src/file_handler.c)
 
 # Windows에서 필요한 라이브러리 추가
-if(WIN32)
+if (WIN32)
     target_link_libraries(${PROJECT_NAME} wsock32 ws2_32)
-endif()
+endif ()
 
 # 디버그 모드 설정
 set(CMAKE_BUILD_TYPE Debug)
 add_compile_options(-Wall -Wextra)
+
+add_custom_target(copy_static_files ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/static
+        ${CMAKE_BINARY_DIR}/static
+)
+
+add_dependencies(${PROJECT_NAME} copy_static_files)

@@ -59,11 +59,11 @@ typedef struct {
 } http_request;
 
 // 함수 선언
-http_request parse_http_request(const char* raw_request);
-const char* get_method_string(http_method method);
-void print_http_request(const http_request* request);
-const char* get_header_value(const http_request* request, const char* header_name);
-const char* get_query_param(const http_request* request, const char* param_name);
-const char* get_post_param(const http_request* request, const char* param_name);
+http_request parse_http_request(const char *raw_request);
+const char *get_method_string(http_method method);
+void print_http_request(const http_request *request);
+const char *get_header_value(const http_request *request, const char *header_name);
+const char *get_query_param(const http_request *request, const char *param_name);
+const char *get_post_param(const http_request *request, const char *param_name);
 
 #endif //WEBSERVER_HTTP_PARSER_H
