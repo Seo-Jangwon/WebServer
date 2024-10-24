@@ -11,7 +11,9 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 file(GLOB_RECURSE SOURCES "src/*.c")
 
 # 실행 파일 생성
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES}
+        include/file_handler.h
+        src/file_handler.c)
 
 # Windows에서 필요한 라이브러리 추가
 if(WIN32)

@@ -2,16 +2,20 @@
 #include <stdlib.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <http_parser.h>
-
-//todo 쿼리 문자열 파싱
-//todo POST 데이터 파싱
+#include "http_parser.h"
+#include "file_handler.h"
 
 // ws2_32.lib 라이브러리 링크
 #pragma comment(lib, "ws2_32.lib")
 
 #define PORT 8080           // 서버 포트 번호
 #define BUFFER_SIZE 1024    // 버퍼 크기 (1KB)
+#ifdef _WIN32
+#define strcasecmp _stricmp
+#define STATIC_FILE_PATH ".\\static"
+#else
+#define STATIC_FILE_PATH "./static"
+#endif
 
 // 에러 처리
 void error_handling(const char* message) {
@@ -19,12 +23,56 @@ void error_handling(const char* message) {
     exit(1);  // 프로그램 종료
 }
 
+// 정적 파일 처리
+void handle_static_file(SOCKET client_socket, const char* request_path) {
+    // 파일 읽기
+    file_result file = read_file(STATIC_FILE_PATH, request_path);
+
+    // HTTP 응답 헤더
+    char header[1024];
+    if (file.status_code == 200) {
+        snprintf(header, sizeof(header),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Length: %zu\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            file.size);
+    } else {
+        const char* error_message = file.status_code == 404 ?
+            "404 Not Found" : "500 Internal Server Error";
+
+        snprintf(header, sizeof(header),
+            "HTTP/1.1 %d %s\r\n"
+            "Content-Length: %zu\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            file.status_code, error_message, strlen(error_message));
+
+        // 에러 메시지를 응답 본문으로 사용
+        file.data = (char*)error_message;
+        file.size = strlen(error_message);
+    }
+
+    // 헤더 전송
+    send(client_socket, header, strlen(header), 0);
+
+    // 파일 데이터 전송
+    if (file.data) {
+        send(client_socket, file.data, file.size, 0);
+    }
+
+    // 리소스 정리
+    if (file.status_code == 200) { // 에러 시 file.data가 정적 문자열
+        free_file_result(&file);
+    }
+}
+
 // 클라이언트 요청 처리
 void handle_client(SOCKET client_socket) {
-    char buffer[BUFFER_SIZE] = {0};  // 버퍼 초기화 추가
+    char buffer[BUFFER_SIZE] = {0};  // 버퍼 초기화
     int str_len;
 
-    // 클라이언트로부터 메시지 받기
+    // 클라이언트로부터 메시지 수신
     str_len = recv(client_socket, buffer, BUFFER_SIZE, 0);
     if (str_len == SOCKET_ERROR) {
         error_handling("recv() error");
@@ -32,50 +80,54 @@ void handle_client(SOCKET client_socket) {
     }
 
     // 받은 데이터 출력 (디버깅용)
-    printf("Received message: %s\n", buffer);
+    printf("Received message:\n%s\n", buffer);
 
     // HTTP 요청 파싱
     http_request req = parse_http_request(buffer);
-    print_http_request(&req);
+    print_http_request(&req);  // 파싱된 요청 정보 출력
 
-    // HTTP 응답 생성
-    char response[1024];
-    char body[3072];
-
-    snprintf(response, sizeof(response),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/html\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "<html><body>"
-        "<h1>Request Parsed</h1>"
-        "<p>Method: %s</p>"
-        "<p>Path: %s</p>"
-        "<p>Version: %s</p>"
-        "<p>Host: %s</p>"
-        "</body></html>",
-        get_method_string(req.method),
-        req.path,
-        req.version,
-        req.host
-    );
-
-    // 헤더 목록 추가
-    char temp[1024];
-    for (int i = 0; i < req.header_count; i++) {
-        snprintf(temp, sizeof(temp),
-            "<li><strong>%s:</strong> %s</li>",
-            req.headers[i].name,
-            req.headers[i].value
+    // 정적 파일 요청 처리
+    if (req.method == HTTP_GET) {
+        handle_static_file(client_socket, req.base_path);
+    } else {
+        // 기본 HTTP 응답 생성
+        char response[4096];
+        snprintf(response, sizeof(response),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "<html><body>"
+            "<h1>Request Parsed</h1>"
+            "<p>Method: %s</p>"
+            "<p>Path: %s</p>"
+            "<p>Version: %s</p>"
+            "<p>Host: %s</p>"
+            "<h2>Headers:</h2>"
+            "<ul>",
+            get_method_string(req.method),
+            req.path,
+            req.version,
+            req.host
         );
-        strncat(body, temp, sizeof(body) - strlen(body) - 1);
-    }
-    strncat(body, "</ul>", sizeof(body) - strlen(body) - 1);
 
-    // 응답 전송
-    int sent = send(client_socket, response, strlen(response), 0);
-    if (sent == SOCKET_ERROR) {
-        error_handling("send() error");
+        // 헤더 목록 추가
+        char temp[1024];
+        char full_response[8192] = {0};  // 더 큰 버퍼
+        strcpy(full_response, response);
+
+        for (int i = 0; i < req.header_count; i++) {
+            snprintf(temp, sizeof(temp),
+                "<li><strong>%s:</strong> %s</li>",
+                req.headers[i].name,
+                req.headers[i].value
+            );
+            strcat(full_response, temp);
+        }
+        strcat(full_response, "</ul></body></html>");
+
+        // 응답 전송
+        send(client_socket, full_response, strlen(full_response), 0);
     }
 
     closesocket(client_socket);
