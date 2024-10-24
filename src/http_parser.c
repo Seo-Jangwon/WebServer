@@ -1,7 +1,16 @@
+/*
+* HTTP 요청 파서 구현
+ * 1. HTTP 요청 메시지 파싱
+ * 2. 메소드, 헤더, 경로 추출
+ * 3. URL 파라미터 파싱
+ * 4. POST 데이터 처리
+ */
+
 #include "http_parser.h"
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 // HTTP 메소드를 문자열로
 const char *get_method_string(http_method method) {
@@ -15,7 +24,7 @@ const char *get_method_string(http_method method) {
   }
 }
 
-// HTTP 메소드 문자열 enum으로
+// HTTP 메소드 문자열을 enum으로
 static http_method parse_method(const char *method_str) {
   if (strcmp(method_str, "GET") == 0) return HTTP_GET;
   if (strcmp(method_str, "POST") == 0) return HTTP_POST;

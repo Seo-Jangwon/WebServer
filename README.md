@@ -124,18 +124,21 @@
 
 ```
 webserver/
-├── src/
-│   ├── main.c
-│   ├── http_parser.c
-│   ├── connection.c
-│   └── ...
 ├── include/
-│   ├── http_parser.h
-│   ├── connection.h
-│   └── ...
-├── tests/
-├── docs/
-└── Makefile
+│   ├── config.h        (서버 설정)
+│   ├── server.h        (서버 core)
+│   ├── http_parser.h   (HTTP 파싱)
+│   ├── file_handler.h  (파일 처리)
+│   └── connection.h    (연결 관리)
+├── src/
+│   ├── main.c         (진입점)
+│   ├── server.c       (서버 구현)
+│   ├── config.c       (설정 관리)
+│   ├── http_parser.c  (HTTP 파싱)
+│   ├── file_handler.c (파일 처리)
+│   └── connection.c   (연결 관리)
+├── static/            (정적 파일)
+└── CMakeLists.txt
 ```
 
 <!--
