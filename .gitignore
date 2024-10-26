@@ -1,7 +1,7 @@
 # CLion specific
 .idea/
 cmake-build-*/
-bigimage.jpg
+static/images/bigimage.jpg
 
 # Prerequisites
 *.d
