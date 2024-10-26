@@ -12,12 +12,16 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <time.h>
 
 #ifdef _WIN32
 #define PATH_SEPARATOR '\\'
 #else
 #define PATH_SEPARATOR '/'
 #endif
+
+static file_cache *cache = NULL;
+static const int CACHE_TTL = 300; // 5분 캐시 유효시간
 
 // MIME 타입 매핑
 static const mime_mapping MIME_TYPES[] = {
@@ -156,10 +160,17 @@ file_result read_file(const char *base_path, const char *request_path) {
 
   printf("Attempting to read: %s\n", normalized_path);
 
-  // MIME 타입 설정
-  const char *mime_type = get_mime_type(request_path);
-  printf("MIME type: %s\n", mime_type);
-  result.content_type = strdup(mime_type);
+  // 캐시 확인
+  cache_entry *cached = cache_get(normalized_path);
+  if (cached) {
+    printf("Cache hit: %s\n", normalized_path);
+    result.data = cached->data;
+    result.size = cached->size;
+    result.content_type = strdup(cached->content_type);
+    result.status_code = 200;
+    cached->ref_count++;
+    return result;
+  }
 
   // 파일 존재 확인
   struct stat file_stat;
@@ -200,18 +211,202 @@ file_result read_file(const char *base_path, const char *request_path) {
     return result;
   }
 
-  printf("File successfully read\n");
+  // MIME 타입 설정
+  result.content_type = strdup(get_mime_type(request_path));
   result.status_code = 200;
+
+  // 캐시에 저장
+  if (result.status_code == 200) {
+    cache_put(normalized_path, &result);
+  }
+
   return result;
+}
+
+// 데이터 포인터로 캐시 엔트리 찾기
+static cache_entry *find_cache_entry(const void *data) {
+  if (!cache) return NULL;
+
+  for (size_t i = 0; i < cache->size; i++) {
+    if (cache->entries[i] && cache->entries[i]->data == data) {
+      return cache->entries[i];
+    }
+  }
+  return NULL;
 }
 
 // 메모리 해제
 void free_file_result(file_result *result) {
-  if (result) {
-    free(result->data);
-    free(result->content_type);
-    result->data = NULL;
-    result->content_type = NULL;
-    result->size = 0;
+  if (!result) return;
+
+  cache_entry *entry = find_cache_entry(result->data);
+  if (entry) {
+    entry->ref_count--; // 참조 카운트 감소
+    if (entry->ref_count == 0) {
+      // 실제 메모리 해제는 캐시에서 제거될 때만
+      result->data = NULL;
+    }
+  } else {
+    free(result->data); // 캐시되지 않은 경우 직접 해제
+  }
+
+  free(result->content_type);
+  result->data = NULL;
+  result->content_type = NULL;
+  result->size = 0;
+}
+
+
+// 캐시 초기화
+void cache_init(size_t capacity) {
+  cache = (file_cache *) malloc(sizeof(file_cache));
+  cache->entries = (cache_entry **) calloc(capacity, sizeof(cache_entry *));
+  cache->paths = (char **) calloc(capacity, sizeof(char *));
+  cache->size = 0;
+  cache->capacity = capacity;
+}
+
+// 캐시 정리
+void cache_cleanup(void) {
+  if (!cache) return;
+
+  for (size_t i = 0; i < cache->size; i++) {
+    if (cache->entries[i]) {
+      free(cache->entries[i]->data);
+      free(cache->entries[i]->content_type);
+      free(cache->entries[i]);
+    }
+    if (cache->paths[i]) {
+      free(cache->paths[i]);
+    }
+  }
+
+  free(cache->entries);
+  free(cache->paths);
+  free(cache);
+  cache = NULL;
+}
+
+// 캐시에서 파일 찾기
+cache_entry *cache_get(const char *path) {
+  if (!cache) {
+    printf("Cache not initialized!\n");
+    return NULL;
+  }
+
+  time_t current_time = time(NULL);
+  printf("\n=== Cache Lookup ===\n");
+  printf("Looking for path: %s\n", path);
+  printf("Current cache size: %zu/%zu\n", cache->size, cache->capacity);
+
+  for (size_t i = 0; i < cache->size; i++) {
+    printf("Comparing with cached path: %s\n", cache->paths[i]);
+    if (strcmp(cache->paths[i], path) == 0) {
+      cache_entry *entry = cache->entries[i];
+      printf("Cache hit! Entry found.\n");
+      printf("Entry size: %zu bytes\n", entry->size);
+      printf("Time in cache: %lld seconds\n", current_time - entry->cached_time);
+
+      // 캐시 유효성 검사 (TTL)
+      if (current_time - entry->cached_time > CACHE_TTL) {
+        printf("Cache entry expired (TTL: %d seconds)\n", CACHE_TTL);
+        cache_remove(path);
+        return NULL;
+      }
+
+      // 파일 변경 확인
+      struct stat st;
+      if (stat(path, &st) == 0) {
+        if (st.st_mtime > entry->last_modified) {
+          printf("File modified since cached\n");
+          cache_remove(path);
+          return NULL;
+        }
+      }
+      printf("Cache entry valid and returned\n");
+      return entry;
+    }
+  }
+
+  printf("Cache miss!\n");
+  return NULL;
+}
+
+// 캐시에 파일 추가 (LRU 방식)
+void cache_put(const char *path, const file_result *result) {
+  if (!cache || !result || !result->data) {
+    printf("Invalid cache put attempt!\n");
+    return;
+  }
+
+  printf("\n=== Cache Put Operation ===\n");
+  printf("Adding file: %s\n", path);
+  printf("File size: %zu bytes\n", result->size);
+  printf("Current cache size: %zu/%zu\n", cache->size, cache->capacity);
+
+  // 캐시가 꽉 찬 경우 가장 오래된 항목 제거
+  if (cache->size == cache->capacity) {
+    printf("Cache full, removing oldest entry: %s\n", cache->paths[0]);
+    cache_remove(cache->paths[0]);
+  }
+
+  // 새 엔트리 생성
+  cache_entry *entry = (cache_entry *) malloc(sizeof(cache_entry));
+  if (!entry) {
+    printf("Failed to allocate cache entry!\n");
+    return;
+  }
+
+  entry->data = malloc(result->size);
+  if (!entry->data) {
+    printf("Failed to allocate cache data!\n");
+    free(entry);
+    return;
+  }
+
+  // 데이터 복사 시작
+  printf("Copying %zu bytes to cache...\n", result->size);
+  memcpy(entry->data, result->data, result->size);
+  entry->size = result->size;
+  entry->content_type = strdup(result->content_type);
+  entry->cached_time = time(NULL);
+  entry->ref_count = 1;
+
+  struct stat st;
+  if (stat(path, &st) == 0) {
+    entry->last_modified = st.st_mtime;
+  }
+
+  // 캐시에 추가
+  size_t idx = cache->size;
+  cache->entries[idx] = entry;
+  cache->paths[idx] = strdup(path);
+  cache->size++;
+
+  printf("File successfully cached\n");
+  printf("New cache size: %zu/%zu\n", cache->size, cache->capacity);
+}
+
+// 캐시에서 파일 제거
+void cache_remove(const char *path) {
+  if (!cache) return;
+
+  for (size_t i = 0; i < cache->size; i++) {
+    if (strcmp(cache->paths[i], path) == 0) {
+      // 메모리 해제
+      free(cache->entries[i]->data);
+      free(cache->entries[i]->content_type);
+      free(cache->entries[i]);
+      free(cache->paths[i]);
+
+      // 배열 정리
+      for (size_t j = i; j < cache->size - 1; j++) {
+        cache->entries[j] = cache->entries[j + 1];
+        cache->paths[j] = cache->paths[j + 1];
+      }
+
+      cache->size--;
+      return;
+    }
   }
 }

@@ -14,6 +14,16 @@ client_connection *create_connection(SOCKET socket, struct sockaddr_in addr, siz
   conn->addr = addr;
   conn->buffer_size = buffer_size;
 
+  // 소켓 버퍼 크기 설정
+  int rcvbuf = 65536; // 64KB
+  int sndbuf = 65536; // 64KB
+  setsockopt(socket, SOL_SOCKET, SO_RCVBUF, (char *) &rcvbuf, sizeof(rcvbuf));
+  setsockopt(socket, SOL_SOCKET, SO_SNDBUF, (char *) &sndbuf, sizeof(sndbuf));
+
+  // TCP_NODELAY 활성화
+  BOOL nodelay = TRUE;
+  setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, (char *) &nodelay, sizeof(nodelay));
+
   conn->buffer = (char *) malloc(buffer_size);
   if (!conn->buffer) {
     free(conn);
@@ -24,6 +34,7 @@ client_connection *create_connection(SOCKET socket, struct sockaddr_in addr, siz
 }
 
 void handle_connection(client_connection *conn) {
+  printf("\n=== Incoming Request Headers ===\n%s\n", conn->buffer);
   // 버퍼 초기화
   memset(conn->buffer, 0, conn->buffer_size);
 

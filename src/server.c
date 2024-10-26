@@ -133,8 +133,14 @@ void handle_static_file(SOCKET client_socket, const char *request_path) {
   printf("Request path: %s\n", request_path);
   printf("Document root: %s\n", g_server->config.document_root);
 
+  // 기본 경로인 경우 index.html로 처리
+  const char *file_path = request_path;
+  if (strcmp(request_path, "/") == 0 || strlen(request_path) == 0) {
+    file_path = "/index.html";
+  }
+
   // 파일 처리
-  file_result file = read_file(g_server->config.document_root, request_path);
+  file_result file = read_file(g_server->config.document_root, file_path);
 
   printf("File operation result - Status: %d, Size: %zu\n",
          file.status_code,
