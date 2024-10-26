@@ -57,3 +57,6 @@ dkms.conf
 
 # Windows specific
 Thumbs.db
+
+static/images/bigimage.jpg
+*.jpg
