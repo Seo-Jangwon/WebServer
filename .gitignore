@@ -59,4 +59,4 @@ dkms.conf
 Thumbs.db
 
 static/images/bigimage.jpg
-*.jpg
+static/images/*.jpg
