@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Image Test</title>
+  <style>
+    .image-container {
+      max-width: 100%;
+      margin: 20px;
+    }
+    .image-container img {
+      max-width: 100%;
+      height: auto;
+    }
+    .direct-link {
+      display: block;
+      margin: 20px;
+    }
+  </style>
+</head>
+<body>
+<h1>Image Test</h1>
+
+<div class="image-container">
+  <h2>Embedded Image:</h2>
+  <img src="/images/bigimage.jpg" alt="Big Image">
+</div>
+
+<div class="direct-link">
+  <h2>Direct Link:</h2>
+  <a href="/images/bigimage.jpg" target="_blank">Open image in new tab</a>
+</div>
+
+<div class="image-container">
+  <h2>Object Tag:</h2>
+  <object data="/images/bigimage.jpg" type="image/jpeg" width="100%">
+    <p>Image failed to load</p>
+  </object>
+</div>
+</body>
+</html>

@@ -76,7 +76,10 @@ static const char *get_file_extension(const char *file_path) {
 // MIME 타입 얻기
 const char *get_mime_type(const char *file_path) {
   const char *extension = get_file_extension(file_path);
-  printf("Extracted extension: %s\n", extension);
+
+  printf("\n=== MIME Type Detection ===\n");
+  printf("File path: %s\n", file_path);
+  printf("Extension: %s\n", extension);
 
   // 확장자가 없는 경우
   if (!extension || !*extension) {

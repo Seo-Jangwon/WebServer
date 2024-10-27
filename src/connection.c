@@ -34,14 +34,50 @@ client_connection *create_connection(SOCKET socket, struct sockaddr_in addr, siz
 }
 
 void handle_connection(client_connection *conn) {
-  printf("\n=== Incoming Request Headers ===\n%s\n", conn->buffer);
-  // 버퍼 초기화
+  // 요청 수신 전에 버퍼 초기화
   memset(conn->buffer, 0, conn->buffer_size);
 
-  // 요청 수신
-  int received = recv(conn->socket, conn->buffer, conn->buffer_size - 1, 0);
-  if (received <= 0) {
+  // 헤더 끝을 찾기 위한 변수들
+  size_t total_received = 0;
+  const char* header_end;
+  int found_header_end = 0;
+
+  // 헤더를 완전히 받을 때까지 반복
+  while (total_received < conn->buffer_size - 1) {
+    int received = recv(conn->socket,
+                      conn->buffer + total_received,
+                      conn->buffer_size - total_received - 1,
+                      0);
+
+    if (received <= 0) {
+      printf("Connection closed or error occurred\n");
+      return;
+    }
+
+    total_received += received;
+    conn->buffer[total_received] = '\0';
+
+    // \r\n\r\n을 찾아 헤더의 끝 확인
+    header_end = strstr(conn->buffer, "\r\n\r\n");
+    if (header_end) {
+      found_header_end = 1;
+      break;
+    }
+  }
+
+  if (!found_header_end) {
+    printf("Could not find end of headers\n");
     return;
+  }
+
+  // 헤더 부분만 출력
+  size_t header_length = header_end - conn->buffer + 4;
+  char* headers = (char*)malloc(header_length + 1);
+  if (headers) {
+    memcpy(headers, conn->buffer, header_length);
+    headers[header_length] = '\0';
+    printf("\n=== Incoming Request Headers ===\n%s\n", headers);
+    free(headers);
   }
 
   // HTTP 요청 파싱
@@ -50,7 +86,7 @@ void handle_connection(client_connection *conn) {
 
   // GET 요청 처리
   if (req.method == HTTP_GET) {
-    handle_static_file(conn->socket, req.base_path);
+    handle_static_file(conn->socket, &req, req.base_path);
   } else {
     // 기타 메소드에 대한 기본 응답
     const char *response = "HTTP/1.1 200 OK\r\n"
