@@ -18,6 +18,8 @@
 #include <time.h>
 #include <sys/stat.h>
 
+#include "error_handle.h"
+
 #ifdef _WIN32
 #define PATH_SEPARATOR '\\'
 #define STATIC_FILE_PATH "static"
@@ -217,7 +219,11 @@ range_request *parse_range_header(const char *range_header, size_t file_size) {
 
 void handle_static_file(SOCKET client_socket, const http_request *req, const char *request_path) {
   if (!g_server) {
-    fprintf(stderr, "Server not initialized\n");
+    error_context err = MAKE_ERROR(ERR_INTERNAL_ERROR,
+                                   "Server not initialized",
+                                   "The server instance is not properly initialized");
+    log_error(&err);
+    send_error_response(client_socket, &err);
     return;
   }
 
@@ -233,23 +239,18 @@ void handle_static_file(SOCKET client_socket, const http_request *req, const cha
 
   file_result file = read_file(g_server->config.document_root, file_path);
   if (file.status_code != 200) {
-    const char *error_message = file.status_code == 404
-                                  ? "404 Not Found"
-                                  : "500 Internal Server Error";
-
-    char header[1024];
-    snprintf(header,
-             sizeof(header),
-             "HTTP/1.1 %d %s\r\n"
-             "Content-Length: %llu\r\n"
-             "Connection: close\r\n"
-             "\r\n%s",
-             file.status_code,
-             error_message,
-             (unsigned long long) strlen(error_message),
-             error_message);
-
-    send(client_socket, header, strlen(header), 0);
+    error_context err;
+    if (file.status_code == 404) {
+      err = MAKE_ERROR(ERR_NOT_FOUND,
+                       "The requested file was not found",
+                       file_path);
+    } else {
+      err = MAKE_ERROR(ERR_INTERNAL_ERROR,
+                       "Failed to read file",
+                       "Error occurred while reading the requested file");
+    }
+    log_error(&err);
+    send_error_response(client_socket, &err);
     return;
   }
 
@@ -343,7 +344,6 @@ void handle_static_file(SOCKET client_socket, const http_request *req, const cha
              last_modified);
   }
 
-
   printf("\n=== Response Headers ===\n%s", header);
   send(client_socket, header, strlen(header), 0);
 
@@ -352,10 +352,9 @@ void handle_static_file(SOCKET client_socket, const http_request *req, const cha
   size_t remaining = file.size;
   size_t total_sent = 0;
   int retry_count = 0;
-  const int MAX_RETRIES = 3; // 최대 재시도 횟수
+  const int MAX_RETRIES = 3;
 
   if (ranges && ranges->count > 0) {
-    // 범위 요청 처리
     range_part *part = &ranges->parts[0];
     remaining = part->end - part->start + 1;
     current_pos += part->start;
@@ -373,10 +372,17 @@ void handle_static_file(SOCKET client_socket, const http_request *req, const cha
 
       if (result == SOCKET_ERROR) {
         int error = WSAGetLastError();
-        fprintf(stderr,
-                "\nSend failed: %d at position %zu\n",
-                error,
-                total_sent + sent);
+        char error_detail[256];
+        snprintf(error_detail,
+                 sizeof(error_detail),
+                 "Socket error %d at position %zu",
+                 error,
+                 total_sent + sent);
+
+        error_context err = MAKE_ERROR(ERR_SOCKET_ERROR,
+                                       "Failed to send file data",
+                                       error_detail);
+        log_error(&err);
 
         if (error == WSAECONNRESET || error == WSAECONNABORTED) {
           if (retry_count < MAX_RETRIES) {
@@ -384,11 +390,12 @@ void handle_static_file(SOCKET client_socket, const http_request *req, const cha
                     "Connection reset, retrying (%d/%d)...\n",
                     retry_count + 1,
                     MAX_RETRIES);
-            Sleep(1000); // 1초 대기 후 재시도
+            Sleep(1000);
             retry_count++;
             continue;
           } else {
-            fprintf(stderr, "Max retries reached, abandoning transfer\n");
+            err.detail = "Maximum retry attempts reached";
+            send_error_response(client_socket, &err);
             goto cleanup;
           }
         }
@@ -402,7 +409,7 @@ void handle_static_file(SOCKET client_socket, const http_request *req, const cha
 
       sent += result;
       total_sent += result;
-      retry_count = 0;  // 성공적인 전송 후 재시도 카운트 리셋
+      retry_count = 0;
 
       // 진행률 및 속도 계산
       int current_percent = (int) ((total_sent * 100) /

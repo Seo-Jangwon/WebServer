@@ -1,10 +1,58 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>테스트 페이지</title>
+  <title>Welcome to C Web Server</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    .test-links {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 5px;
+    }
+
+    .test-links a {
+      display: block;
+      margin: 10px 0;
+      color: #007bff;
+      text-decoration: none;
+    }
+
+    .test-links a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
-<h1>정적 페이지</h1>
-<p>정적 페이지</p>
+<div class="container">
+  <h1>Welcome to C Web Server</h1>
+  <p>This is a simple web server implemented in C.</p>
+
+  <div class="test-links">
+    <h2>Test Links:</h2>
+    <a href="/test.txt">Text File Test</a>
+    <a href="/images/wahh.jpg">Image File Test</a>
+    <a href="/notfound.html">404 Error Test</a>
+    <a href="/../../etc/passwd">Directory Traversal Test</a>
+    <a href="/bigfile.txt">Large File Test</a>
+  </div>
+</div>
 </body>
 </html>

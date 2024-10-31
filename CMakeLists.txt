@@ -17,6 +17,8 @@ set(SOURCES
         src/http_parser.c
         src/file_handler.c
         src/connection.c
+        include/error_handle.h
+        src/error_handle.c
 )
 
 # 실행 파일 생성

@@ -14,6 +14,8 @@
 #include <ctype.h>
 #include <time.h>
 
+#include "error_handle.h"
+
 #ifdef _WIN32
 #define PATH_SEPARATOR '\\'
 #else
@@ -129,7 +131,7 @@ static void normalize_path(char *path) {
 
 // 파일 읽기
 file_result read_file(const char *base_path, const char *request_path) {
-  file_result result = {NULL, 0, NULL, 404};
+  file_result result = {NULL, 0, NULL, 404, NULL};
 
   printf("\n=== File Read Operation ===\n");
   printf("Base path: %s\n", base_path);
@@ -199,6 +201,7 @@ file_result read_file(const char *base_path, const char *request_path) {
     printf("Memory allocation failed for size: %zu\n", result.size);
     fclose(file);
     result.status_code = 500;
+    result.error_detail = "Could not allocate buffer for file transfer";
     return result;
   }
 

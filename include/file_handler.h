@@ -23,6 +23,7 @@ typedef struct {
   size_t size; // 파일 크기
   char *content_type; // MIME 타입
   int status_code; // HTTP 상태 코드
+  const char* error_detail; // 에러 상세 내용
 } file_result;
 
 typedef struct {
