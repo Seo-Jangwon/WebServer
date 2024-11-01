@@ -3,6 +3,14 @@
 
 #include <winsock2.h>
 
+typedef enum {
+  DELETE_SUCCESS = 0,
+  DELETE_FILE_NOT_FOUND,
+  DELETE_ACCESS_DENIED,
+  DELETE_PATH_INVALID,
+  DELETE_ERROR
+} delete_result;
+
 typedef struct {
   SOCKET socket; // 클라이언트 소켓
   struct sockaddr_in addr; // 클라이언트 주소

@@ -12,6 +12,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+#include "error_handle.h"
+
 // HTTP 메소드를 문자열로
 const char *get_method_string(http_method method) {
   switch (method) {
@@ -186,8 +188,80 @@ http_request parse_http_request(const char *raw_request) {
       parse_post_data(&req, body);
     }
   }
+  // Content-Type 파싱
+  const char *content_type = get_header_value(&req, "Content-Type");
+  req.content_type_enum = parse_content_type(content_type);
+
+  // POST/PUT 데이터 파싱
+  if ((req.method == HTTP_POST || req.method == HTTP_PUT) && req.content_length > 0) {
+    const char *body = strstr(raw_request, "\r\n\r\n");
+    if (body) {
+      body += 4;
+
+      // raw body 저장
+      req.raw_body = malloc(req.content_length + 1);
+      memcpy(req.raw_body, body, req.content_length);
+      req.raw_body[req.content_length] = '\0';
+      req.raw_body_length = req.content_length;
+
+      switch (req.content_type_enum) {
+        case CONTENT_TYPE_FORM_URLENCODED:
+          parse_post_data(&req, body);
+          break;
+
+        case CONTENT_TYPE_JSON:
+          parse_json_body(&req, body);
+          break;
+
+        case CONTENT_TYPE_MULTIPART: {
+          const char *boundary = strstr(content_type, "boundary=");
+          if (boundary) {
+            boundary += 9;
+            parse_multipart_body(&req, body, boundary);
+          }
+          break;
+        }
+
+        default:
+          break;
+      }
+    }
+  }
 
   return req;
+}
+
+// 메모리 해제
+void free_request_body(http_request *req) {
+  if (!req) return;
+
+  // JSON 필드 해제
+  if (req->json_fields) {
+    for (int i = 0; i < req->json_field_count; i++) {
+      if (req->json_fields[i].value.type == JSON_STRING) {
+        free(req->json_fields[i].value.string_value);
+      }
+    }
+    free(req->json_fields);
+  }
+
+  // Multipart 파일 해제
+  if (req->files) {
+    for (int i = 0; i < req->file_count; i++) {
+      free(req->files[i].data);
+    }
+    free(req->files);
+  }
+
+  // Raw body 해제
+  free(req->raw_body);
+
+  req->json_fields = NULL;
+  req->files = NULL;
+  req->raw_body = NULL;
+  req->json_field_count = 0;
+  req->file_count = 0;
+  req->raw_body_length = 0;
 }
 
 // 헤더 값 검색
@@ -249,4 +323,176 @@ void print_http_request(const http_request *req) {
   }
 
   printf("==================\n");
+}
+
+// Content-Type 파싱
+content_type_t parse_content_type(const char *content_type) {
+  if (!content_type) return CONTENT_TYPE_NONE;
+
+  if (strstr(content_type, "application/x-www-form-urlencoded"))
+    return CONTENT_TYPE_FORM_URLENCODED;
+  else if (strstr(content_type, "application/json"))
+    return CONTENT_TYPE_JSON;
+  else if (strstr(content_type, "multipart/form-data"))
+    return CONTENT_TYPE_MULTIPART;
+
+  return CONTENT_TYPE_UNKNOWN;
+}
+
+// JSON 파싱 (간단한 구현)
+static void skip_whitespace(const char **ptr) {
+  while (**ptr && isspace(**ptr)) (*ptr)++;
+}
+
+static char *parse_json_string(const char **ptr) {
+  if (**ptr != '"') return NULL;
+  (*ptr)++;
+
+  const char *start = *ptr;
+  while (**ptr && **ptr != '"') (*ptr)++;
+
+  if (**ptr != '"') return NULL;
+
+  size_t len = *ptr - start;
+  char *str = malloc(len + 1);
+  strncpy(str, start, len);
+  str[len] = '\0';
+  (*ptr)++;
+
+  return str;
+}
+
+static json_value parse_json_value(const char **ptr) {
+  json_value value = {0};
+  skip_whitespace(ptr);
+
+  if (**ptr == '"') {
+    value.type = JSON_STRING;
+    value.string_value = parse_json_string(ptr);
+  } else if (**ptr == 't' && strncmp(*ptr, "true", 4) == 0) {
+    value.type = JSON_BOOLEAN;
+    value.boolean_value = 1;
+    *ptr += 4;
+  } else if (**ptr == 'f' && strncmp(*ptr, "false", 5) == 0) {
+    value.type = JSON_BOOLEAN;
+    value.boolean_value = 0;
+    *ptr += 5;
+  } else if (**ptr == 'n' && strncmp(*ptr, "null", 4) == 0) {
+    value.type = JSON_NULL;
+    *ptr += 4;
+  } else if (isdigit(**ptr) || **ptr == '-') {
+    value.type = JSON_NUMBER;
+    char *end;
+    value.number_value = strtod(*ptr, &end);
+    *ptr = end;
+  }
+
+  return value;
+}
+
+int parse_json_body(http_request *req, const char *body) {
+  if (!body || !*body) return 0;
+
+  req->json_fields = malloc(sizeof(json_field) * MAX_POST_PARAMS);
+  req->json_field_count = 0;
+
+  const char *ptr = body;
+  skip_whitespace(&ptr);
+
+  if (*ptr != '{') return 0;
+  ptr++;
+
+  while (*ptr && *ptr != '}' && req->json_field_count < MAX_POST_PARAMS) {
+    skip_whitespace(&ptr);
+
+    // 키 파싱
+    char *key = parse_json_string(&ptr);
+    if (!key) break;
+
+    skip_whitespace(&ptr);
+    if (*ptr != ':') {
+      free(key);
+      break;
+    }
+    ptr++;
+
+    // 값 파싱
+    json_value value = parse_json_value(&ptr);
+
+    // 필드 저장
+    strncpy(req->json_fields[req->json_field_count].key, key, 255);
+    req->json_fields[req->json_field_count].value = value;
+    req->json_field_count++;
+
+    free(key);
+
+    skip_whitespace(&ptr);
+    if (*ptr == ',') ptr++;
+  }
+
+  return 1;
+}
+
+// multipart/form-data 파싱
+int parse_multipart_body(http_request *req, const char *body, const char *boundary) {
+  if (!body || !boundary) return 0;
+
+  req->files = malloc(sizeof(multipart_file) * MAX_POST_PARAMS);
+  req->file_count = 0;
+
+  char boundary_start[256];
+  snprintf(boundary_start, sizeof(boundary_start), "--%s", boundary);
+
+  const char *current = strstr(body, boundary_start);
+  while (current && req->file_count < MAX_POST_PARAMS) {
+    current += strlen(boundary_start);
+
+    // Content-Disposition 헤더 찾기
+    const char *disposition = strstr(current, "Content-Disposition: form-data;");
+    if (!disposition) break;
+
+    // 파일 이름 추출
+    const char *filename_start = strstr(disposition, "filename=\"");
+    if (filename_start) {
+      filename_start += 10;
+      const char *filename_end = strchr(filename_start, '"');
+      if (filename_end) {
+        size_t filename_len = filename_end - filename_start;
+        strncpy(req->files[req->file_count].filename,
+                filename_start,
+                min(filename_len, 255));
+      }
+    }
+
+    // Content-Type 찾기
+    const char *content_type = strstr(current, "Content-Type: ");
+    if (content_type) {
+      content_type += 14;
+      const char *content_type_end = strstr(content_type, "\r\n");
+      if (content_type_end) {
+        size_t content_type_len = content_type_end - content_type;
+        strncpy(req->files[req->file_count].content_type,
+                content_type,
+                min(content_type_len, 127));
+      }
+    }
+
+    // 파일 데이터 찾기
+    const char *data_start = strstr(current, "\r\n\r\n");
+    if (data_start) {
+      data_start += 4;
+      const char *data_end = strstr(data_start, boundary_start);
+      if (data_end) {
+        size_t data_size = data_end - data_start - 2; // -2 for \r\n
+        req->files[req->file_count].data = malloc(data_size);
+        memcpy(req->files[req->file_count].data, data_start, data_size);
+        req->files[req->file_count].size = data_size;
+        req->file_count++;
+      }
+    }
+
+    current = strstr(current, boundary_start);
+  }
+
+  return 1;
 }

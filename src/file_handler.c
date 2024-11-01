@@ -47,22 +47,54 @@ static const mime_mapping MIME_TYPES[] = {
 
 // 보안 검사
 int is_path_safe(const char *path) {
+  printf("\n=== Path Safety Check ===\n");
+  printf("Checking path: %s\n", path);
+
+  // NULL이나 빈 문자열 체크
+  if (!path || !*path) {
+    printf("Empty path rejected\n");
+    return 0;
+  }
+
+  // 상대 경로에서 시작 슬래시 제거
+  while (*path == '/' || *path == '\\') {
+    path++;
+  }
+
   // ".." 상위 디렉토리 접근 제한
-  if (strstr(path, "..") != NULL) {
-    return 0;
+  const char *double_dot = strstr(path, "..");
+  if (double_dot) {
+    // ".."이 발견된 위치 다음이 경로 구분자인 경우만 차단
+    const char next = double_dot[2];
+    if (next == '/' || next == '\\' || next == '\0') {
+      printf("Directory traversal attempt rejected\n");
+      return 0;
+    }
   }
 
-  // 절대 경로 사용 제한
-  if (path[0] == '/' || path[0] == '\\') {
-    return 0;
+  // 파일명에 허용되는 문자만 체크
+  const char *cur = path;
+  while (*cur) {
+    if (!isalnum(*cur) &&
+      *cur != '.' &&
+      *cur != '-' &&
+      *cur != '_' &&
+      *cur != ' ') {
+      // 디렉토리 구분자는 중간에만 허용
+      if ((*cur == '/' || *cur == '\\') &&
+        *(cur + 1) != '\0' && // 마지막이 아닐 때
+        cur != path) {
+        // 첫 글자가 아닐 때
+        cur++;
+        continue;
+      }
+      printf("Invalid character in path: %c\n", *cur);
+      return 0;
+    }
+    cur++;
   }
 
-  // 기타 특수 문자 제한
-  const char *invalid_chars = "<>:\"\\|?*";
-  if (strpbrk(path, invalid_chars) != NULL) {
-    return 0;
-  }
-
+  printf("Path is safe\n");
   return 1;
 }
 
@@ -77,16 +109,16 @@ static const char *get_file_extension(const char *file_path) {
 
 // MIME 타입 얻기
 const char *get_mime_type(const char *file_path) {
-  const char *extension = get_file_extension(file_path);
-
   printf("\n=== MIME Type Detection ===\n");
   printf("File path: %s\n", file_path);
+
+  const char *extension = get_file_extension(file_path);
   printf("Extension: %s\n", extension);
 
   // 확장자가 없는 경우
   if (!extension || !*extension) {
     printf("No extension found\n");
-    return "application/octet-stream";
+    return "application/octet-stream; charset=utf-8";
   }
 
   // 확장자를 소문자로
@@ -103,13 +135,25 @@ const char *get_mime_type(const char *file_path) {
   for (const mime_mapping *mime = MIME_TYPES; mime->extension != NULL; mime++) {
     printf("Comparing with: %s -> %s\n", mime->extension, mime->mime_type);
     if (strcmp(ext_lower, mime->extension) == 0) {
+      // 텍스트 기반 파일의 경우 UTF-8 인코딩
+      if (strstr(mime->mime_type, "text/") == mime->mime_type ||
+        strstr(mime->mime_type, "application/json") == mime->mime_type ||
+        strstr(mime->mime_type, "application/javascript") == mime->mime_type) {
+        static char mime_with_charset[256];
+        snprintf(mime_with_charset,
+                 sizeof(mime_with_charset),
+                 "%s; charset=utf-8",
+                 mime->mime_type);
+        printf("Found MIME type: %s\n", mime_with_charset);
+        return mime_with_charset;
+      }
       printf("Found MIME type: %s\n", mime->mime_type);
       return mime->mime_type;
     }
   }
 
   printf("No matching MIME type found, using default\n");
-  return "application/octet-stream";
+  return "application/octet-stream; charset=utf-8";
 }
 
 // 경로 정규화

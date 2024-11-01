@@ -183,7 +183,175 @@ make test
 
 ### Phase 2: 기능 확장
 
-- [ ] HTTP 메소드 확장
+- [x] HTTP 메소드 확장
+  <details>
+  <summary>구현 내용 상세</summary>
+
+  #### 1. 메소드별 구조체 및 enum 추가
+  ```c
+  // 지원하는 Content-Type
+  typedef enum {
+    CONTENT_TYPE_NONE,
+    CONTENT_TYPE_FORM_URLENCODED,
+    CONTENT_TYPE_JSON,
+    CONTENT_TYPE_MULTIPART,
+    CONTENT_TYPE_UNKNOWN
+  } content_type_t;
+  
+  // JSON 값 타입
+  typedef enum {
+    JSON_STRING,
+    JSON_NUMBER,
+    JSON_BOOLEAN,
+    JSON_NULL
+  } json_value_type;
+  
+  // JSON 값
+  typedef struct {
+    json_value_type type;
+    union {
+      char *string_value;
+      double number_value;
+      int boolean_value;
+    };
+  } json_value;
+  
+  // JSON 키-값 쌍
+  typedef struct {
+    char key[256];
+    json_value value;
+  } json_field;
+  
+  // multipart 파일 정보
+  typedef struct {
+    char filename[256];
+    char content_type[128];
+    char *data;
+    size_t size;
+  } multipart_file;
+  ```
+  #### 2. POST 메소드 구현
+  - form-urlencoded 데이터 파싱
+  - JSON 파싱 및 처리
+  - multipart/form-data (파일 업로드)
+
+  ```c
+  switch (req->content_type_enum) {
+    case CONTENT_TYPE_FORM_URLENCODED:
+      // form 데이터 파싱
+      parse_post_data(&req, body);
+      break;
+    case CONTENT_TYPE_JSON:
+      // JSON 파싱
+      parse_json_body(&req, body);
+      break;
+    case CONTENT_TYPE_MULTIPART:
+      // 파일 업로드 처리
+      const char *boundary = strstr(content_type, "boundary=");
+      if (boundary) {
+        boundary += 9;
+        parse_multipart_body(&req, body, boundary);
+      }
+      break;
+    }
+  ```
+  #### 3. PUT 메소드 구현
+  - 파일 업로드/덮어쓰기
+  - 경로 검증
+  - raw_body 처리
+  ```c
+  // PUT 요청 처리
+  static void handle_put_request(SOCKET client_socket, http_request *req) {
+    
+    // ...
+  
+    // 상대 경로 정규화
+    const char *relative_path = req->base_path;
+    while (*relative_path == '/') relative_path++;
+
+    // 경로 검증
+    if (!is_path_safe(relative_path)) {
+        send_json_response(client_socket, 400, "Bad Request", "Invalid path");
+        return;
+    }
+
+    // ...
+  
+    // 파일 저장
+    FILE *fp = fopen(full_path, "wb");
+    
+    // raw body를 파일에 쓰기
+    size_t written = fwrite(req->raw_body, 1, req->raw_body_length, fp);
+    fclose(fp);
+  }
+
+  ```
+  #### 4. DELETE 메소드 구현
+  - 파일 삭제 기능
+  - 캐시 연동
+  - 경로 보안 처리
+  ```c
+  static delete_result delete_file(const char *base_path, const char *request_path) {
+    // 상대 경로 검증
+    if (!is_path_safe(request_path)) {
+      return DELETE_PATH_INVALID;
+    }
+
+    // 파일 삭제 시도
+    if (remove(full_path) != 0) {
+        return DELETE_ERROR;
+    }
+  
+    return DELETE_SUCCESS;
+  }
+  
+  // DELETE 요청 처리
+  static void handle_delete_request(SOCKET client_socket, http_request *req) {
+    delete_result result = delete_file(g_server->config.document_root, req->base_path);
+
+    switch (result) {
+      case DELETE_SUCCESS: {
+        char detail[1024];
+        snprintf(detail, sizeof(detail), "Successfully deleted file: %s", req->base_path);
+        send_json_response(client_socket, 200, "OK", detail);
+
+        // 캐시에서도 제거
+        char full_path[1024];
+        snprintf(full_path, sizeof(full_path), "%s%c%s", g_server->config.document_root, PATH_SEPARATOR, req->base_path[0] == '/' ? req->base_path + 1 : req->base_path);
+        cache_remove(full_path);
+        break;
+      }             
+      
+      // ...  
+  
+    }
+  }
+  ```
+  #### 5. 보안 개선
+  ```c
+  int is_path_safe(const char *path) {
+      // 상위 디렉토리 접근 제한
+      if (strstr(path, "..")) return 0;
+      
+      // 허용된 문자만 포함
+      while (*cur) {
+          if (!isalnum(*cur) && 
+              *cur != '.' && 
+              *cur != '-' && 
+              *cur != '_' && 
+              *cur != ' ') {
+              return 0;
+          }
+          cur++;
+      }
+      return 1;
+  }
+  ```
+  #### 6. 테스트 구현
+  - 메소드별 테스트 케이스
+  - 에러 케이스 검증
+  </details>
+
 - [ ] 로깅 시스템
 - [ ] 설정 파일 처리
 
