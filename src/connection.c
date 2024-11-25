@@ -270,7 +270,7 @@ static void handle_put_request(SOCKET client_socket, http_request *req) {
   send_json_response(client_socket, 201, "Created", detail);
 }
 
-// 파일 삭제 헬퍼 함수
+// 파일 삭제 헬퍼
 static delete_result delete_file(const char *base_path, const char *request_path) {
   printf("\n=== Processing File Delete ===\n");
   printf("Base path: %s\n", base_path);
@@ -333,9 +333,9 @@ static void handle_delete_request(SOCKET client_socket, http_request *req) {
 
   // 서버 인스턴스 체크
   if (!g_server) {
-    error_context err = MAKE_ERROR(ERR_INTERNAL_ERROR,
-                                   "Server not initialized",
-                                   "The server instance is not properly initialized");
+    error_context err = MAKE_ERROR_DETAIL(ERR_INTERNAL_ERROR,
+                                          "Server not initialized",
+                                          "The server instance is not properly initialized");
     send_error_response(client_socket, &err);
     return;
   }
@@ -420,6 +420,11 @@ static void handle_head_request(SOCKET client_socket, http_request *req) {
 
 // handle_connection
 void handle_connection(client_connection *conn) {
+  printf("\n=== New Connection Started ===\n");
+  printf("Buffer size: %zu\n", conn->buffer_size);
+  printf("Client IP: %s\n", inet_ntoa(conn->addr.sin_addr));
+  printf("Client Port: %d\n", ntohs(conn->addr.sin_port));
+
   // 요청 수신 전에 버퍼 초기화
   memset(conn->buffer, 0, conn->buffer_size);
 
@@ -428,6 +433,7 @@ void handle_connection(client_connection *conn) {
   const char *header_end;
   int found_header_end = 0;
 
+  printf("\n=== Receiving Request ===\n");
   // 헤더를 완전히 받을 때까지 반복
   while (total_received < conn->buffer_size - 1) {
     int received = recv(conn->socket,
@@ -447,6 +453,7 @@ void handle_connection(client_connection *conn) {
     header_end = strstr(conn->buffer, "\r\n\r\n");
     if (header_end) {
       found_header_end = 1;
+      printf("Found end of headers at position: %td\n", header_end - conn->buffer);
       break;
     }
   }
@@ -456,13 +463,16 @@ void handle_connection(client_connection *conn) {
     return;
   }
 
+  // Raw 요청 출력
+  printf("\n=== Raw Request ===\n%s\n", conn->buffer);
+
   // 헤더 부분만 출력
   size_t header_length = header_end - conn->buffer + 4;
   char *headers = (char *) malloc(header_length + 1);
   if (headers) {
     memcpy(headers, conn->buffer, header_length);
     headers[header_length] = '\0';
-    printf("\n=== Incoming Request Headers ===\n%s\n", headers);
+    printf("\n=== Parsed Headers ===\n%s\n", headers);
     free(headers);
   }
 

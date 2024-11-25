@@ -10,6 +10,13 @@
 #define FILE_HANDLER_H
 
 #include <stddef.h>
+#include <limits.h>
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+#ifdef _WIN32
+#include <stdlib.h>  // for _fullpath
+#endif
 
 // MIME 타입 매핑
 typedef struct {

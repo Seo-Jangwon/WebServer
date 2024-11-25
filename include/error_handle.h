@@ -4,7 +4,7 @@
 
 #include <winsock2.h>
 
-// 에러 코드 정의
+// 에러 코드
 typedef enum {
   ERR_NONE = 0,
   ERR_NOT_FOUND = 404,
@@ -19,6 +19,7 @@ typedef enum {
   ERR_SOCKET_ERROR = 1001,
   ERR_MEMORY_ERROR = 1002,
   ERR_FILE_ERROR = 1003,
+  ERR_ACCESS_DENIED = 403,
 } error_code;
 
 // 에러 컨텍스트
@@ -30,14 +31,19 @@ typedef struct {
   int line;
 } error_context;
 
-// 에러 응답 생성
-void send_error_response(SOCKET client_socket, const error_context *err);
-
 // 에러 로깅
 void log_error(const error_context *err);
 
-// 에러 컨텍스트 생성 매크로
-#define MAKE_ERROR(code, msg, detail) \
-    (error_context){code, msg, detail, __FILE__, __LINE__}
+// 에러 응답 생성
+void send_error_response(SOCKET client_socket, const error_context *err);
+
+// 에러 생성 매크로
+#define MAKE_ERROR_DETAIL(code, msg, detail) \
+((error_context){code, msg, detail, __FILE__, __LINE__})
+
+#define LOG_ERROR(msg, detail) do { \
+error_context err = MAKE_ERROR_DETAIL(ERR_FILE_ERROR, msg, detail); \
+log_error(&err); \
+} while(0)
 
 #endif // ERROR_HANDLER_H

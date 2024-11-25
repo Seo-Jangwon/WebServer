@@ -108,24 +108,53 @@ static void parse_post_data(http_request *req, const char *body) {
 // HTTP 요청 파싱
 http_request parse_http_request(const char *raw_request) {
   http_request req = {0};
-  char method_str[32] = {0};
-  char full_path[1024] = {0};
+
+  // 요청 라인 추출
+  const char *line_end = strstr(raw_request, "\r\n");
+  if (!line_end) {
+    printf("Invalid HTTP request: No CRLF found\n");
+    req.method = HTTP_UNKNOWN;
+    return req;
+  }
+
+  size_t request_line_length = line_end - raw_request;
+  if (request_line_length >= sizeof(req.path)) {
+    printf("Request line too long\n");
+    req.method = HTTP_UNKNOWN;
+    return req;
+  }
+
+  char request_line[1024];
+  memcpy(request_line, raw_request, request_line_length);
+  request_line[request_line_length] = '\0';
 
   // 요청 라인 파싱
-  sscanf(raw_request, "%s %s %s", method_str, full_path, req.version);
+  char *method_str = strtok(request_line, " ");
+  char *path = strtok(NULL, " ");
+  char *version = strtok(NULL, " ");
+
+  if (!method_str || !path || !version) {
+    printf("Failed to parse request line\n");
+    req.method = HTTP_UNKNOWN;
+    return req;
+  }
+
+  // 메서드 설정
   req.method = parse_method(method_str);
 
-  // URL과 쿼리스트링 분리
-  char *query = strchr(full_path, '?');
+  // 경로 설정 (원본 그대로 유지)
+  strncpy(req.base_path, path, sizeof(req.base_path) - 1);
+
+  // 버전 설정
+  strncpy(req.version, version, sizeof(req.version) - 1);
+
+  // 경로와 쿼리스트링 분리
+  char *query = strchr(req.base_path, '?');
   if (query) {
     *query = '\0';
-    strncpy(req.base_path, full_path, sizeof(req.base_path) - 1);
     strncpy(req.query_string, query + 1, sizeof(req.query_string) - 1);
     parse_query_string(&req, req.query_string);
-  } else {
-    strncpy(req.base_path, full_path, sizeof(req.base_path) - 1);
   }
-  strncpy(req.path, full_path, sizeof(req.path) - 1);
 
   // 헤더 파싱
   const char *current = strchr(raw_request, '\n') + 1;
